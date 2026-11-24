@@ -1,0 +1,18 @@
+{
+  "line": {"line_id": "JW-01", "name": "江湾东堤巡检线", "datum": "东堤零桩与站内高程基准"},
+  "window": {"start": "0", "end": "6", "left_height": "1", "right_height": "1"},
+  "batches": {
+    "A": {
+      "book": {"id": "晨班-06", "entries": {"第1条": "零桩至一米，标尺始终为零。"}},
+      "segments": [{"segment_id": "A", "start": "0", "end": "1", "left_height": "0", "right_height": "0", "terminal": false, "quality": "pass", "instrument_ok": true, "source": {"book": "晨班-06", "entry": "第1条"}}]
+    },
+    "B": {
+      "book": {"id": "晨班-07", "entries": {"第2条": "四米至六米均为二米高，六米为闭合实测点。"}},
+      "segments": [{"segment_id": "B", "start": "4", "end": "6", "left_height": "2", "right_height": "2", "terminal": true, "quality": "pass", "instrument_ok": true, "source": {"book": "晨班-07", "entry": "第2条"}}]
+    },
+    "C": {
+      "book": {"id": "补测-01", "entries": {"第1条": "独立补测一米至四米，量得平段。"}},
+      "segments": [{"segment_id": "C", "start": "1", "end": "4", "left_height": "0", "right_height": "0", "terminal": false, "quality": "pass", "instrument_ok": true, "source": {"book": "补测-01", "entry": "第1条"}}]
+    }
+  }
+}
