@@ -7,10 +7,10 @@ from contextlib import closing
 from intake.catalog import AcceptedCatalog
 from intake.receive import receive
 from issue.registry import IssueRegistry
-from issue.reissue import release
+from issue.reissue import release, release_highest
 from reports.history import fetch
 from reports.publication import PublicationStore
-from review.assessment import assess
+from review.assessment import assess, assess_highest
 from survey.lines import LineStore
 from survey.revisions import RevisionStore
 from tests.fixtures import LINE, book, segment
@@ -99,5 +99,40 @@ def check_v1():
             print("POINTWISE_SURFACE_V1 " + json.dumps({"case": name, "actual": actual}, ensure_ascii=False))
 
 
+def check_v2():
+    with closing(sqlite3.connect(":memory:")) as station:
+        lines = LineStore(station)
+        lines.initialize([LINE])
+        revisions = RevisionStore(station, lines)
+        revisions.initialize()
+        registry = IssueRegistry(station)
+        registry.initialize()
+        entries = {
+            batch: release_highest(revisions, registry, revision, f"highest-surface-{batch}")
+            for batch, revision in record_samples(revisions).items()
+        }
+    with closing(sqlite3.connect(":memory:")) as offline:
+        catalog = AcceptedCatalog(offline)
+        archive = PublicationStore(offline)
+        catalog.initialize()
+        archive.initialize()
+        ids = {batch: receive(catalog, entry.payload) for batch, entry in entries.items()}
+        for name, batches, sight, expected in CASES:
+            start, end, left, right = sight
+            result = assess_highest(catalog, archive, request_id=name, line_id=LINE.line_id,
+                                    bundle_ids=[ids[batch] for batch in batches],
+                                    start=start, end=end, left_height=left, right_height=right)
+            report = result.report
+            block = report.block
+            actual_gaps = tuple((str(gap.start), str(gap.end), gap.left_closed, gap.right_closed)
+                                for gap in report.coverage.gaps)
+            actual = (report.status, str(block.chainage) if block else None,
+                      tuple(item.segment_id for item in block.supports) if block else (), actual_gaps)
+            if actual != expected or fetch(offline, report.report_id) != (report, result.receipt):
+                raise AssertionError(f"{name}: expected {expected!r}, got {actual!r} or different stored result")
+            print("POINTWISE_SURFACE_V2 " + json.dumps({"case": name, "actual": actual}, ensure_ascii=False))
+
+
 if __name__ == "__main__":
     check_v1()
+    check_v2()

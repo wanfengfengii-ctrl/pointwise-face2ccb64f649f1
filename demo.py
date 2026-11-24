@@ -7,11 +7,11 @@ from tempfile import TemporaryDirectory
 from intake.catalog import AcceptedCatalog
 from intake.receive import receive
 from issue.registry import IssueRegistry
-from issue.reissue import release
+from issue.reissue import release, release_highest
 from reports.history import fetch
 from reports.publication import PublicationStore
 from reports.snapshots import encode_snapshot
-from review.assessment import assess
+from review.assessment import assess, assess_highest
 from survey.lines import LineStore, SurveyLine
 from survey.revisions import RevisionStore
 
@@ -19,6 +19,11 @@ from survey.revisions import RevisionStore
 def issue_batch(revisions, registry, line_id, name, batch):
     revision = revisions.record(line_id, batch['book'], batch['segments'])
     return release(revisions, registry, revision, f'shift-{name}')
+
+
+def issue_highest_batch(revisions, registry, line_id, name, batch):
+    revision = revisions.record(line_id, batch['book'], batch['segments'])
+    return release_highest(revisions, registry, revision, f'shift-{name}')
 
 
 def review_summary(report):
@@ -31,6 +36,50 @@ def review_summary(report):
         'earlier_covered': data['earlier_covered'],
         'gaps': data['coverage']['gaps'],
     }
+
+
+def highest_scenario(sample):
+    """Issue the highest measured surface as V2, review it, and refetch later."""
+    line = SurveyLine(**sample['line'])
+    with TemporaryDirectory(prefix='jiangwan-highest-') as directory:
+        station_path = Path(directory) / 'station.sqlite'
+        offline_path = Path(directory) / 'offline.sqlite'
+        with closing(sqlite3.connect(station_path)) as station:
+            lines = LineStore(station)
+            lines.initialize([line])
+            revisions = RevisionStore(station, lines)
+            revisions.initialize()
+            registry = IssueRegistry(station)
+            registry.initialize()
+            issued = [
+                issue_highest_batch(revisions, registry, line.line_id, name, sample['batches'][name])
+                for name in ('A', 'B')
+            ]
+        with closing(sqlite3.connect(offline_path)) as offline:
+            catalog = AcceptedCatalog(offline)
+            archive = PublicationStore(offline)
+            catalog.initialize()
+            archive.initialize()
+            selected = [receive(catalog, entry.payload) for entry in issued]
+            outcome = assess_highest(
+                catalog, archive, request_id='highest-morning', line_id=line.line_id,
+                bundle_ids=selected, **sample['window'],
+            )
+        with closing(sqlite3.connect(offline_path)) as reopened:
+            restored = fetch(reopened, outcome.report.report_id)
+    summary = review_summary(outcome.report)
+    if summary != {'status': 'blocked_pending', 'chainage': '4', 'segments': ['B'],
+                   'earlier_covered': False,
+                   'gaps': [{'start': '1', 'end': '4', 'left_closed': True, 'right_closed': False}]}:
+        raise RuntimeError(f'HIGHEST_SURFACE_MISMATCH actual={summary!r}')
+    if restored != (outcome.report, outcome.receipt):
+        raise RuntimeError('HIGHEST_SURFACE_HISTORY_MISMATCH: reopened archive differs')
+    print('POINTWISE_HIGHEST ' + json.dumps({
+        'status': summary['status'], 'chainage': summary['chainage'],
+        'segments': summary['segments'], 'gaps': summary['gaps'],
+        'receipt_id': outcome.receipt.receipt_id,
+    }, sort_keys=True, ensure_ascii=False))
+    return summary
 
 
 def main():
@@ -97,6 +146,7 @@ def main():
         'oracle': '0 < 1 on A and C, 2 >= 1 on B from metre 4. A alone leaves [1,4); A and C cover [0,4).',
     }
     print('POINTWISE_SCENARIO ' + json.dumps(scenario, sort_keys=True, ensure_ascii=False))
+    highest_scenario(sample)
 
 
 if __name__ == '__main__':

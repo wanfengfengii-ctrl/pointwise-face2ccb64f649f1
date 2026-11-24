@@ -2,12 +2,12 @@ import sqlite3
 from dataclasses import dataclass
 
 from intake.integrity import ValidatedBundle, validate_bundle
-from issue.envelope import V1Envelope
+from issue.envelope import V1Envelope, V2Envelope
 
 
 @dataclass(frozen=True)
 class AcceptedBundle:
-    envelope: V1Envelope
+    envelope: V1Envelope | V2Envelope
     payload: bytes
 
     @property
@@ -17,6 +17,10 @@ class AcceptedBundle:
     @property
     def line_id(self) -> str:
         return self.envelope.line_id
+
+    @property
+    def version(self) -> int:
+        return 1 if isinstance(self.envelope, V1Envelope) else 2
 
 
 class AcceptedCatalog:

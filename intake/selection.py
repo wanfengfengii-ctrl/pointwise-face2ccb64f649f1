@@ -20,7 +20,9 @@ class SelectedBundles:
     bundles: tuple[AcceptedBundle, ...]
 
 
-def select_bundles(catalog: AcceptedCatalog, line_id: str, bundle_ids: Iterable[str]) -> SelectedBundles:
+def select_bundles(
+    catalog: AcceptedCatalog, line_id: str, bundle_ids: Iterable[str], *, version: int = 1
+) -> SelectedBundles:
     require_text(line_id, 'line id')
     selected = []
     for bundle_id in normalize_bundle_ids(bundle_ids):
@@ -30,5 +32,14 @@ def select_bundles(catalog: AcceptedCatalog, line_id: str, bundle_ids: Iterable[
             raise ValueError(f'bundle has not been accepted: {bundle_id}') from exc
         if bundle.line_id != line_id:
             raise ValueError(f'bundle belongs to another survey line: {bundle_id}')
+        if bundle.version != version:
+            raise ValueError(f'bundle is not a version {version} station bundle: {bundle_id}')
         selected.append(bundle)
     return SelectedBundles(line_id, tuple(selected))
+
+
+def select_highest(catalog: AcceptedCatalog, line_id: str, bundle_ids: Iterable[str]) -> SelectedBundles:
+    selected = select_bundles(catalog, line_id, bundle_ids, version=2)
+    if not selected.bundles:
+        raise ValueError('highest-surface review requires at least one accepted version 2 bundle')
+    return selected

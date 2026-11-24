@@ -11,13 +11,15 @@ python3 -B check_project.py
 python3 -B demo.py
 ```
 
-控制台物化项目时提供 `check_project.py`。在独立源码目录也可直接执行完整回归。
+控制台物化项目时提供 `check_project.py`。它先跑完整回归，再依次执行 `surface_examples.py`（V1/V2 样例）和 `check_highest.py`（发件披露、断源复核、拒收、签存失败重试与重开领取），任一失败以非零退出。在独立源码目录也可直接执行完整回归。
 
 ```sh
 python3 -B -m unittest discover -s tests -t .
 ```
 
 演示从 `samples/shift.json` 读取线档、测簿、测段和视线，在临时目录内分别保存站内库与离线库。先发行 A 和 B 并关闭站内库，在 `[0,6]` 内用高程 1 米的水平视线复核。A 覆盖 `[0,1)` 且高程为 0，B 覆盖 `[4,6]` 且高程为 2。预期在 4 米确证遮挡，出处为 B，缺口 `[1,4)` 使首个遮挡待确认。C 补测 `[1,4)` 且恒高 0，重新指定 A、B、C 后，同一确证位置成为已确认的首个遮挡。演示重开离线库并核对两份报告和各自的原回执。
+
+同一演示随后发行 V2 最高实测面：A 在 `[0,1)`、B 在 `[4,6]`，各自一段即是当地最高面，低位与缺测证据不随件。外协沿原入口实收后，以同一闭窗和视线复核，签出 4 米、出处 B、缺口 `[1,4)`，并重开离线库按原报告号领取同一报告与回执（`POINTWISE_HIGHEST`）。
 
 ## 工作流程与数据
 
@@ -49,12 +51,16 @@ python3 -B -m unittest discover -s tests -t .
 | 冻结原测 | `revisions.record(line_id, book, rows)` 返回修订号。`book` 含 `id` 和条目号到原文的 `entries`，`rows` 的格式见样例 |
 | 更正原测 | `revisions.correct(revision_id, book, rows)` 返回同线后继修订号。传入的原测形成后继自身的完整提交，旧修订仍可读取 |
 | 发行与补发 | `release(revisions, registry, revision_id, request_id)` 返回 `IssueEntry`，其中 `bundle_id` 是 `B:` 加请求号，`payload` 是站件字节。`registry.get(bundle_id)` 按发行号查原件 |
+| 发行最高面 | `release_highest(revisions, registry, revision_id, request_id)` 以同号发行 V2 最高实测面，返回 `IssueEntry`。同号同修订同版本重投取回原字节；同号改修订或改版本报 `ValueError` |
 | 初始化离线 | `AcceptedCatalog(db).initialize()` 和 `PublicationStore(db).initialize()` |
-| 实收站件 | `receive(catalog, payload)` 返回实收件号。`catalog.get(bundle_id)` 返回首投存档字节及已验正文 |
+| 实收站件 | `receive(catalog, payload)` 返回实收件号。`catalog.get(bundle_id)` 返回首投存档字节及已验正文，可区分 V1/V2 |
 | 核定与签存 | `assess(catalog, archive, request_id=..., line_id=..., bundle_ids=..., start=..., end=..., left_height=..., right_height=...)` 返回 `Assessment`，含 `report` 和 `receipt` |
+| 核定最高面 | `assess_highest(...)` 输入与结果同 `assess`，只消费 V2 实收件，签出最高实测面达到或超过视线的最早实测点及其并列最高出处 |
 | 领取历史 | `fetch(offline_db, report_id)` 返回 `(ReportSnapshot, Receipt)`。`encode_snapshot(report)` 可得到包含有理文本的 JSON 快照 |
 
 模块分别位于 `survey`、`issue`、`intake`、`review` 和 `reports`。`demo.py` 展示了导入和连接生命周期。站件 JSON 外层含 `version`、`bundle_id`、`line_id`、`revision_id`、`body` 和 `digest`。正文重复绑定三个身份字段并携带 `segments` 与 `missing`。摘要是正文按键排序、用紧凑 ASCII JSON 编码后的 SHA-256。实收重投比较规范正文及身份，保留首件字节。跨发行者共用目录时，发行者应使用独立的请求号命名范围。
+
+V2 沿用同一外层字段，`version` 为整数 2，正文为三个身份字段与 `surface`。`surface` 含 `spans` 与 `points`：每段有起止里程、`left_closed`/`right_closed`、两端精确有理高程和达到当地最高实测值的原段 `supports`；每个点有单一 `chainage`、`height` 与并列支持。支持记录含 `segment_id` 和测簿出处 `source`；低位证据、缺测原段与测簿正文留站。两份形状可由实际字节核对实测域、精确高程和全部并列出处，范围开闭与单点资格可区分。
 
 无效坐标、虚构出处、错件、非法请求、同号异件或同请求号异参会抛出 `ValueError`。未知测线、修订或报告的直接查找抛出 `KeyError`，选件缺失按复核输入错误处理。报告按 `RPT:` 加请求号归档，回执绑定该报告号和请求号。复投相同规范请求可复领原报告与回执。数据库写入错误保留 SQLite 异常，出现写入或提交失败时本次报告与成功回执均不可见。
 
@@ -68,3 +74,4 @@ python3 -B -m unittest discover -s tests -t .
 | v6 | `tests.test_intake.IntakeTests` 核对合法重投、同号有效冲突、坏摘要及内外绑定 |
 | v8 | `tests.test_reports.ReportTests` 使用真正的 SQLite 写入失败及延迟约束提交失败核对回滚与续办 |
 | 测绘入口 | `tests.test_survey.SurveyTests` 核对米值、固定参照、原测留站与质量口径 |
+| 最高面 | `tests.test_surface.HighestSurfaceTests` 核对 V2 发件只带最高面、并列与单点保全、同号版本冲突、坏件/混版/错线拒收，以及签存失败重试与重开原号领取 |

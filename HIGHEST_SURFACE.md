@@ -8,6 +8,8 @@
 
 V2 沿用站件的 JSON 外层字段 `version`、`bundle_id`、`line_id`、`revision_id`、`body`、`digest`，版本为整数 2。正文含同一组三个身份字段和 `surface`。沿用 V1 的规范正文摘要和有理文本口径。`surface` 的记录形状由本次实现决定并公开说明，须能从实际字节核对实测域、精确高程和全部并列出处。范围的开闭归属和单点的实测资格须可区分。
 
+本实现的 `surface` 为 `{"spans": [...], "points": [...]}`。段记录字段为 `start`、`end`、`left_closed`、`right_closed`、`left_height`、`right_height`、`supports`；点记录字段为 `chainage`、`height`、`supports`。所有里程与高程用 V1 的规范有理文本。`supports` 每项为 `{"segment_id": ..., "source": {"book": ..., "entry": ...}}`。段的开闭标记由原段在该端是否实测核定：区间内部交点两端均实测，开放的原段右端不闭合。只在单点达到最高面的原段写入 `points`，与整段支持的 `spans` 相互独立。
+
 `intake.receive.receive(catalog, payload)` 验收 V2 并返回实收件号。格式化后重投同一正文仍取原号，目录保留首投字节。坏摘要、内外身份不符、非法证据结构和同号异件报 `ValueError`，无本次新增实收。证据结构核验包括非法有效域、同件在同一实测位置声明不同的最高高程，以及同一原段号的出处冲突。实收按 V1 的信任边界验证随件证据，固定修订中留站原据的完整比较由发行负责。
 
 ## 断源复核
@@ -18,7 +20,7 @@ V2 沿用站件的 JSON 外层字段 `version`、`bundle_id`、`line_id`、`revi
 
 ## 样例与运行
 
-`surface_examples.py` 的 `BATCHES` 为可直接登记的场景数据。每行依次是原段号、起止里程、左右高程、终点实测标记及质量标记。`record_samples(revisions)` 用已有 `tests.fixtures.LINE` 登记并返回各修订号。`CASES` 依次给出场景名、所选批次、请求四个坐标参数和预期 V2 结果，结果含状态、命中里程、支持原段号和缺口列表。脚本直接运行时检查这些输入的 V1 业务表现。
+`surface_examples.py` 的 `BATCHES` 为可直接登记的场景数据。每行依次是原段号、起止里程、左右高程、终点实测标记及质量标记。`record_samples(revisions)` 用已有 `tests.fixtures.LINE` 登记并返回各修订号。`CASES` 依次给出场景名、所选批次、请求四个坐标参数和预期 V2 结果，结果含状态、命中里程、支持原段号和缺口列表。脚本直接运行时先检查这些输入的 V1 业务表现（`POINTWISE_SURFACE_V1`），再以 V2 发行同一批修订并核对 `CASES`（`POINTWISE_SURFACE_V2`）。
 
 - 主件最高面为 B 在 `[0,2)`，A 在 `[2,4]`，C 仅在 `2`，D 仅在 `4`。F 留站。2 米处的 B 只有区间极限。高程 1 的单点视线签 A、C，高程 5/2 的单点视线签通视。高程 4 的水平视线在 4 米签 A、D。
 - 交叉件中 `3/2` 左侧由 Y 提供最高面，右侧由 X 提供最高面，当点有 T、X、Y。加选更高件后，该点只签 G。另一个闭窗样例在 `7/3` 米于区间内部命中 X。

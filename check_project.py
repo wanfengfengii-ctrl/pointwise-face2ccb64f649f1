@@ -1,9 +1,16 @@
-"""Run this project's full unittest suite from the repository root."""
+"""Run this project's full unittest suite and end-to-end checks from the repo root.
+
+The suite covers the original V1 regression and the V2 highest-surface units.
+After it passes, the sample scenario script and the source-severed verification
+run in sequence; any non-zero exit propagates so the runtime manifest's single
+``verify`` entry reports failure with a non-zero status.
+"""
+import subprocess
 import sys
 import unittest
 
 
-def main():
+def run_suite():
     suite = unittest.defaultTestLoader.discover('tests', top_level_dir='.')
     if suite.countTestCases():
         result = unittest.TextTestRunner(verbosity=2).run(suite)
@@ -23,6 +30,22 @@ def main():
           f'expected_failures={len(result.expectedFailures)} '
           f'unexpected_successes={len(result.unexpectedSuccesses)} '
           f'result={"PASS" if successful else "FAIL"}')
+    return successful
+
+
+def run_script(name):
+    completed = subprocess.run([sys.executable, '-B', name], cwd='.')
+    print(f'SCRIPT {name} exit={completed.returncode}')
+    return completed.returncode == 0
+
+
+def main():
+    successful = run_suite()
+    if successful:
+        successful = run_script('surface_examples.py')
+    if successful:
+        successful = run_script('check_highest.py')
+    print(f'PROJECT RESULT {"PASS" if successful else "FAIL"}')
     return 0 if successful else 1
 
 
